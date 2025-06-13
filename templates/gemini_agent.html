@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini AI Coding Assistant</title>
+    <!-- Google Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='gemini_styles.css') }}">
+    <!-- Include marked.js library for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+<div class="container">
+    <h1>Gemini AI Coding Assistant</h1>
+
+    <form id="agent-form">
+        <label for="action">Select Action:</label>
+        <select id="action" name="action">
+            <option value="generate">Generate Code</option>
+            <option value="debug">Debug Code</option>
+            <option value="explain">Explain Code</option>
+            <option value="refactor">Suggest Refactoring</option>
+            <option value="document">Write Documentation</option>
+        </select>
+        <br><br>
+
+        <label for="prompt">Enter Prompt or Code:</label><br>
+        <textarea id="prompt" name="prompt" rows="10" cols="80" required></textarea>
+        <br><br>
+
+        <button type="submit">Get Assistance</button>
+    </form>
+
+    <h2>Result:</h2>
+    <div class="result-container">
+        <div id="result-loading" style="display: none;">Loading...</div>
+        <div id="result-output">AI response will appear here.</div>
+        <div id="result-controls" style="display: none; margin-top: 10px;">
+            <button id="copy-button">Copy Result</button>
+            <button id="save-button">Save Result</button>
+        </div>
+    </div>
+</div> <!-- Close container div -->
+
+    <script>
+        const form = document.getElementById('agent-form');
+        const actionSelect = document.getElementById('action');
+        const promptTextarea = document.getElementById('prompt');
+        const resultOutput = document.getElementById('result-output'); // Now a div
+        const loadingIndicator = document.getElementById('result-loading');
+        const resultControls = document.getElementById('result-controls');
+        const copyButton = document.getElementById('copy-button');
+        const saveButton = document.getElementById('save-button');
+
+        let rawResultText = ''; // Variable to store the raw text for copy/save
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault(); // Prevent default page reload
+
+            const action = actionSelect.value;
+            const prompt = promptTextarea.value;
+
+            // Show loading indicator and clear previous results
+            loadingIndicator.style.display = 'block';
+            resultOutput.innerHTML = ''; // Clear previous output (use innerHTML for div)
+            resultControls.style.display = 'none'; // Hide buttons
+            rawResultText = ''; // Clear stored text
+
+            try {
+                const response = await fetch('/api/assist', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ action: action, prompt: prompt }),
+                });
+
+                if (!response.ok) {
+                    // Try to get error message from backend response body
+                    let errorMsg = `HTTP error! status: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        // Ignore if response body is not JSON or empty
+                    }
+                    throw new Error(errorMsg);
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    resultOutput.innerHTML = `<p style="color: red;">Error: ${data.error}</p>`;
+                    rawResultText = `Error: ${data.error}`; // Store error text too
+                    resultControls.style.display = 'none'; // Keep buttons hidden on error
+                } else {
+                    rawResultText = data.result; // Store raw text
+                    // Render Markdown to HTML
+                    resultOutput.innerHTML = marked.parse(rawResultText);
+                    resultControls.style.display = 'block'; // Show buttons
+                }
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                resultOutput.innerHTML = `<p style="color: red;">An error occurred: ${error.message}</p>`;
+                rawResultText = `An error occurred: ${error.message}`;
+                resultControls.style.display = 'none'; // Keep buttons hidden on error
+            } finally {
+                // Hide loading indicator
+                loadingIndicator.style.display = 'none';
+            }
+        });
+
+        // --- Event Listener for Copy Button ---
+        copyButton.addEventListener('click', () => {
+            if (rawResultText) {
+                navigator.clipboard.writeText(rawResultText).then(() => {
+                    // Optional: Provide feedback to the user
+                    copyButton.classList.add('copied'); // Add class for styling feedback
+                    copyButton.textContent = 'Copied!'; // Still change text for clarity
+                    setTimeout(() => {
+                        copyButton.classList.remove('copied'); // Remove class
+                        copyButton.textContent = 'Copy Result'; // Reset text
+                    }, 2000); // Reset after 2 seconds
+                }).catch(err => {
+                    console.error('Failed to copy text: ', err);
+                    alert('Failed to copy text. See console for details.');
+                });
+            }
+        });
+
+        // --- Event Listener for Save Button ---
+        saveButton.addEventListener('click', () => {
+            if (rawResultText) {
+                try {
+                    const blob = new Blob([rawResultText], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    // Suggest a filename (user can change it)
+                    link.download = 'ai_result.txt'; // Default filename
+                    // Try to detect if it's likely code for a better extension
+                    if (rawResultText.trim().startsWith('def ') || rawResultText.trim().startsWith('import ') || rawResultText.includes('class ')) {
+                         link.download = 'ai_code.py';
+                    } else if (rawResultText.trim().startsWith('<') || rawResultText.includes('</')) {
+                         link.download = 'ai_markup.html'; // Or .xml, .md etc.
+                    } else if (rawResultText.trim().startsWith('function') || rawResultText.includes('const ') || rawResultText.includes('let ')) {
+                         link.download = 'ai_code.js';
+                    }
+
+                    document.body.appendChild(link); // Required for Firefox
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url); // Clean up
+                } catch (error) {
+                     console.error('Failed to save file:', error);
+                     alert('Failed to save file. See console for details.');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

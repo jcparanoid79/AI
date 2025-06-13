@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DeepSeek Coding Agent</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <!-- Pygments CSS for syntax highlighting -->
+    <style>{{ pygments_css }}</style>
+</head>
+<body>
+    <div class="container">
+        <h1>DeepSeek Code Generator</h1>
+        <textarea id="prompt" rows="4" placeholder="Describe your Python code..."></textarea>
+        <div class="button-group">
+            <button onclick="generateCode()">Generate Code</button>
+            <button onclick="copyCode()">Copy Code</button>
+            <button onclick="saveCode()">Save Code</button>
+        </div>
+        <h2>Result:</h2>
+        <div id="output" class="code-block">{{ highlighted_code|safe }}</div>
+    </div>
+
+    <script>
+        async function generateCode() {
+            const prompt = document.getElementById("prompt").value;
+            const response = await fetch("/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt })
+            });
+            const data = await response.json();
+            document.getElementById("output").innerHTML = data.code;
+        }
+
+        function copyCode() {
+            const code = document.getElementById("output").textContent;
+            navigator.clipboard.writeText(code);
+            alert("Code copied to clipboard!");
+        }
+
+        async function saveCode() {
+            const code = document.getElementById("output").textContent;
+            const blob = new Blob([code], { type: "text/plain" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "generated_code.py";
+            a.click();
+        }
+    </script>
+</body>
+</html>

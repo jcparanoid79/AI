@@ -1,0 +1,4 @@
+[project]
+name = "my_python_project"
+version = "0.1.0"
+description = "A basic Python project"
